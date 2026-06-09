@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { toast } from 'sonner'
 
 const schema = z.object({
-  defaultFeeRate: z.number({ invalid_type_error: '請輸入數字' }).min(0).max(100),
+  defaultFeeRate: z.number({ message: '請輸入數字' }).min(0).max(100),
 })
 type FormValues = z.infer<typeof schema>
 

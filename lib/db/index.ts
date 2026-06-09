@@ -2,9 +2,19 @@ import { drizzle } from 'drizzle-orm/postgres-js'
 import postgres from 'postgres'
 import * as schema from './schema'
 
-const connectionString = process.env.DATABASE_URL!
+type DB = ReturnType<typeof drizzle<typeof schema>>
+let _db: DB | undefined
 
-// 在 Serverless 環境用 prepare: false 避免 prepared statement 問題
-const client = postgres(connectionString, { prepare: false })
+function getDb(): DB {
+  if (!_db) {
+    // prepare: false 避免 Serverless 環境的 prepared statement 問題
+    _db = drizzle(postgres(process.env.DATABASE_URL!, { prepare: false }), { schema })
+  }
+  return _db
+}
 
-export const db = drizzle(client, { schema })
+export const db = new Proxy({} as DB, {
+  get(_, prop) {
+    return Reflect.get(getDb(), prop)
+  },
+})

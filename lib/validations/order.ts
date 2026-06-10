@@ -13,6 +13,7 @@ export const orderItemSchema = z.object({
 export const createOrderSchema = z.object({
   customerName: z.string().min(1, '請輸入客戶姓名').max(50),
   customerId: z.string().uuid().optional(),
+  locationId: z.string().uuid().optional(),
   note: z.string().max(500).optional(),
   items: z.array(orderItemSchema).min(1, '至少新增一項商品'),
 })
@@ -35,6 +36,7 @@ export const createBulkOrdersSchema = z.object({
   currency: z.enum(['JPY', 'KRW', 'USD', 'TWD']),
   exchangeRate: z.number().positive('匯率必須大於 0'),
   feeRate: z.number().min(0).max(100),
+  locationId: z.string().uuid().optional(),
   photoUrl: z.string().url().optional(),
   note: z.string().max(500).optional(),
   customers: z.array(z.object({
@@ -44,7 +46,15 @@ export const createBulkOrdersSchema = z.object({
   })).min(1, '至少新增一位客戶'),
 })
 
+export const updateOrderSchema = z.object({
+  orderId: z.string().uuid(),
+  note: z.string().max(500).optional(),
+  locationId: z.string().uuid().optional().nullable(),
+  items: z.array(orderItemSchema.extend({ id: z.string().uuid().optional() })).min(1, '至少保留一項商品'),
+})
+
 export type CreateOrderInput = z.infer<typeof createOrderSchema>
 export type OrderItemInput = z.infer<typeof orderItemSchema>
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>
 export type CreateBulkOrdersInput = z.infer<typeof createBulkOrdersSchema>
+export type UpdateOrderInput = z.infer<typeof updateOrderSchema>

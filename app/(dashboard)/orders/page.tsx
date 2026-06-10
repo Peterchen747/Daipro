@@ -1,6 +1,8 @@
 import { getOrders } from '@/lib/actions/orders'
-import { StatusBadge } from '@/components/orders/status-badge'
 import { EmptyState } from '@/components/shared/empty-state'
+import { QuickStatusSelect } from '@/components/orders/quick-status-select'
+import { PendingPaymentToggle } from '@/components/orders/pending-payment-toggle'
+import { OrdersStatusTabs } from '@/components/orders/status-tabs'
 import { Button } from '@/components/ui/button'
 import { formatTwd } from '@/lib/utils'
 import { ShoppingBag, Plus, Camera } from 'lucide-react'
@@ -10,8 +12,19 @@ import { orderItems, payments } from '@/lib/db/schema'
 import { eq, sum, inArray } from 'drizzle-orm'
 import type { OrderStatus } from '@/lib/db/schema'
 
-export default async function OrdersPage() {
-  const orderList = await getOrders()
+const VALID_STATUSES: OrderStatus[] = ['pending', 'purchasing', 'arrived', 'pickup', 'done', 'cancelled']
+
+export default async function OrdersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>
+}) {
+  const { status: rawStatus } = await searchParams
+  const selectedStatus = (rawStatus && VALID_STATUSES.includes(rawStatus as OrderStatus))
+    ? rawStatus as OrderStatus
+    : null
+
+  const orderList = await getOrders(selectedStatus)
 
   const orderIds = orderList.map((o) => o.id)
 
@@ -19,17 +32,18 @@ export default async function OrdersPage() {
   let paymentTotalsMap: Record<string, number> = {}
 
   if (orderIds.length > 0) {
-    const itemTotals = await db
-      .select({ orderId: orderItems.orderId, total: sum(orderItems.finalPriceTwd) })
-      .from(orderItems)
-      .where(inArray(orderItems.orderId, orderIds))
-      .groupBy(orderItems.orderId)
-
-    const paymentTotals = await db
-      .select({ orderId: payments.orderId, total: sum(payments.amountTwd) })
-      .from(payments)
-      .where(inArray(payments.orderId, orderIds))
-      .groupBy(payments.orderId)
+    const [itemTotals, paymentTotals] = await Promise.all([
+      db
+        .select({ orderId: orderItems.orderId, total: sum(orderItems.finalPriceTwd) })
+        .from(orderItems)
+        .where(inArray(orderItems.orderId, orderIds))
+        .groupBy(orderItems.orderId),
+      db
+        .select({ orderId: payments.orderId, total: sum(payments.amountTwd) })
+        .from(payments)
+        .where(inArray(payments.orderId, orderIds))
+        .groupBy(payments.orderId),
+    ])
 
     itemTotals.forEach((r) => { itemTotalsMap[r.orderId] = parseFloat(r.total ?? '0') })
     paymentTotals.forEach((r) => { paymentTotalsMap[r.orderId] = parseFloat(r.total ?? '0') })
@@ -37,7 +51,7 @@ export default async function OrdersPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <h1 className="text-xl font-bold hidden md:block">訂單</h1>
         <div className="ml-auto flex gap-2">
           <Button variant="outline" nativeButton={false} render={<Link href="/orders/quick" />}>
@@ -51,11 +65,15 @@ export default async function OrdersPage() {
         </div>
       </div>
 
+      <div className="mb-4">
+        <OrdersStatusTabs selected={selectedStatus ?? ''} />
+      </div>
+
       {orderList.length === 0 ? (
         <EmptyState
           icon={ShoppingBag}
-          title="還沒有訂單"
-          description="點擊下方按鈕建立第一筆訂單，開始管理你的代購生意"
+          title="沒有符合的訂單"
+          description={selectedStatus ? '這個狀態目前沒有訂單' : '點擊下方按鈕建立第一筆訂單'}
           actionLabel="新增訂單"
           actionHref="/orders/new"
         />
@@ -75,11 +93,11 @@ export default async function OrdersPage() {
                         {new Date(order.createdAt!).toLocaleDateString('zh-TW')}
                       </p>
                     </div>
-                    <StatusBadge status={order.status as OrderStatus} />
+                    <QuickStatusSelect orderId={order.id} currentStatus={order.status} />
                   </div>
 
                   <div className="flex items-end justify-between mt-3">
-                    <p className="text-sm text-muted-foreground">訂單金額</p>
+                    <PendingPaymentToggle orderId={order.id} isPending={order.isPendingPayment} />
                     <div className="text-right">
                       <p className="font-semibold">{formatTwd(total)}</p>
                       {unpaid > 0 && (

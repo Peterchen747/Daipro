@@ -1,9 +1,14 @@
 import { getProfile } from '@/lib/actions/profile'
 import { getCustomers } from '@/lib/actions/customers'
+import { getLocations } from '@/lib/actions/locations'
 import { QuickOrderForm } from '@/components/orders/quick-order-form'
 
 export default async function QuickOrderPage() {
-  const [profile, customers] = await Promise.all([getProfile(), getCustomers()])
+  const [profile, customers, locationOptions] = await Promise.all([
+    getProfile(),
+    getCustomers(),
+    getLocations(),
+  ])
 
   const defaultFeeRate = parseFloat(profile?.defaultFeeRate ?? '10')
   const defaultCurrency = profile?.defaultCurrency ?? 'JPY'
@@ -15,6 +20,7 @@ export default async function QuickOrderPage() {
         defaultFeeRate={defaultFeeRate}
         defaultCurrency={defaultCurrency}
         customers={customers}
+        locationOptions={locationOptions}
       />
     </div>
   )

@@ -25,6 +25,8 @@ import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { Camera, Minus, Plus, Trash2, Loader2, RefreshCw, ChevronLeft, ImageIcon } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { LocationPicker, type LocationOption } from '@/components/orders/location-picker'
+import { NumberInput } from '@/components/ui/number-input'
 import type { Customer } from '@/lib/db/schema'
 
 type FormData = z.infer<typeof createBulkOrdersSchema>
@@ -38,9 +40,10 @@ interface Props {
   defaultFeeRate: number
   defaultCurrency: string
   customers: Customer[]
+  locationOptions: LocationOption[]
 }
 
-export function QuickOrderForm({ defaultFeeRate, defaultCurrency, customers }: Props) {
+export function QuickOrderForm({ defaultFeeRate, defaultCurrency, customers, locationOptions }: Props) {
   const router = useRouter()
   const [step, setStep] = useState<1 | 2>(1)
   const [loading, setLoading] = useState(false)
@@ -59,6 +62,7 @@ export function QuickOrderForm({ defaultFeeRate, defaultCurrency, customers }: P
         : 'JPY') as typeof CURRENCIES[number],
       exchangeRate: 0,
       feeRate: defaultFeeRate,
+      locationId: undefined,
       note: '',
       customers: [{ name: '', quantity: 1 }],
     },
@@ -238,12 +242,12 @@ export function QuickOrderForm({ defaultFeeRate, defaultCurrency, customers }: P
             <div className="grid grid-cols-[1fr_auto] gap-3">
               <div className="space-y-1.5">
                 <Label>原價 <span className="text-destructive">*</span></Label>
-                <Input
-                  type="number"
+                <NumberInput
                   inputMode="decimal"
                   placeholder="0"
                   className="h-11"
-                  {...form.register('originalPrice', { valueAsNumber: true })}
+                  value={form.watch('originalPrice')}
+                  onValueChange={(v) => form.setValue('originalPrice', v)}
                 />
                 {form.formState.errors.originalPrice && (
                   <p className="text-sm text-destructive">{form.formState.errors.originalPrice.message}</p>
@@ -292,13 +296,13 @@ export function QuickOrderForm({ defaultFeeRate, defaultCurrency, customers }: P
                     取得匯率
                   </Button>
                 </div>
-                <Input
-                  type="number"
+                <NumberInput
                   inputMode="decimal"
                   step="0.0001"
                   placeholder="0.0000"
                   className="h-11"
-                  {...form.register('exchangeRate', { valueAsNumber: true })}
+                  value={form.watch('exchangeRate')}
+                  onValueChange={(v) => form.setValue('exchangeRate', v)}
                 />
                 {form.formState.errors.exchangeRate && (
                   <p className="text-sm text-destructive">{form.formState.errors.exchangeRate.message}</p>
@@ -316,6 +320,16 @@ export function QuickOrderForm({ defaultFeeRate, defaultCurrency, customers }: P
                 max={100}
                 className="h-11"
                 {...form.register('feeRate', { valueAsNumber: true })}
+              />
+            </div>
+
+            {/* 地點 */}
+            <div className="space-y-1.5">
+              <Label>地點（選填）</Label>
+              <LocationPicker
+                locations={locationOptions}
+                value={form.watch('locationId')}
+                onChange={(id) => form.setValue('locationId', id)}
               />
             </div>
 

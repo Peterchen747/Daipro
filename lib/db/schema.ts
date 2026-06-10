@@ -6,6 +6,8 @@ import {
   timestamp,
   integer,
   pgEnum,
+  boolean,
+  date,
 } from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 
@@ -19,6 +21,14 @@ export const orderStatusEnum = pgEnum('order_status', [
 ])
 
 export const currencyEnum = pgEnum('currency', ['JPY', 'KRW', 'USD', 'TWD'])
+
+export const locations = pgTable('locations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull(),
+  name: text('name').notNull(),
+  date: date('date'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+})
 
 // profiles.id 對應 auth.users(id)，FK 由 Supabase SQL 建立，Drizzle 不直接引用
 export const profiles = pgTable('profiles', {
@@ -45,7 +55,9 @@ export const orders = pgTable('orders', {
   userId: uuid('user_id').notNull(),
   customerId: uuid('customer_id'),
   customerName: text('customer_name').notNull(),
+  locationId: uuid('location_id'),
   status: orderStatusEnum('status').default('pending').notNull(),
+  isPendingPayment: boolean('is_pending_payment').default(false).notNull(),
   note: text('note'),
   photoUrl: text('photo_url'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
@@ -86,9 +98,14 @@ export const exchangeRateCache = pgTable('exchange_rate_cache', {
 })
 
 // Relations
-export const ordersRelations = relations(orders, ({ many }) => ({
+export const locationsRelations = relations(locations, ({ many }) => ({
+  orders: many(orders),
+}))
+
+export const ordersRelations = relations(orders, ({ many, one }) => ({
   orderItems: many(orderItems),
   payments: many(payments),
+  location: one(locations, { fields: [orders.locationId], references: [locations.id] }),
 }))
 
 export const orderItemsRelations = relations(orderItems, ({ one }) => ({
@@ -101,6 +118,7 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
 
 export type Profile = typeof profiles.$inferSelect
 export type Customer = typeof customers.$inferSelect
+export type Location = typeof locations.$inferSelect
 export type Order = typeof orders.$inferSelect
 export type OrderItem = typeof orderItems.$inferSelect
 export type Payment = typeof payments.$inferSelect

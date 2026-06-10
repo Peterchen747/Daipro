@@ -1,7 +1,6 @@
 import { requireAuth } from '@/lib/auth'
-import { createClient } from '@/lib/supabase/server'
 import { db } from '@/lib/db'
-import { orders, orderItems, payments } from '@/lib/db/schema'
+import { orders, orderItems, payments, locations } from '@/lib/db/schema'
 import { eq, and, isNull, sum, count, inArray, desc } from 'drizzle-orm'
 import { formatTwd } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -10,7 +9,7 @@ import { StatusBadge } from '@/components/orders/status-badge'
 import { WelcomeBanner } from '@/components/shared/welcome-banner'
 import { DashboardStatusTabs } from '@/components/dashboard/status-tabs'
 import { seedDemoDataIfNeeded } from '@/lib/actions/seed'
-import { ShoppingBag, Plus, TrendingUp, Clock } from 'lucide-react'
+import { ShoppingBag, Plus, TrendingUp, Clock, MapPin } from 'lucide-react'
 import Link from 'next/link'
 import type { OrderStatus } from '@/lib/db/schema'
 
@@ -22,61 +21,88 @@ export default async function DashboardPage({
   searchParams: Promise<{ status?: string }>
 }) {
   const user = await requireAuth()
-  await seedDemoDataIfNeeded(user.id)
-
-  const supabase = await createClient()
-  const { data: { user: authUser } } = await supabase.auth.getUser()
-  const showWelcome = authUser?.user_metadata?.demoSeeded === true
+  const showWelcome = user.user_metadata?.demoSeeded === true
 
   const { status: rawStatus } = await searchParams
   const selectedStatus = (rawStatus && VALID_STATUSES.includes(rawStatus as OrderStatus))
     ? rawStatus as OrderStatus
     : null
 
-  const recentOrders = await db
-    .select()
-    .from(orders)
-    .where(and(
-      eq(orders.userId, user.id),
-      isNull(orders.deletedAt),
-      selectedStatus ? eq(orders.status, selectedStatus) : undefined,
-    ))
-    .orderBy(desc(orders.createdAt))
-    .limit(selectedStatus ? 20 : 5)
-    .catch((e: unknown) => { console.error('[DB ERROR]', e); throw e })
+  const [recentOrders, [totalOrderCount], pendingOrders, locationList, locationOrderCounts] = await Promise.all([
+    db
+      .select()
+      .from(orders)
+      .where(and(
+        eq(orders.userId, user.id),
+        isNull(orders.deletedAt),
+        selectedStatus ? eq(orders.status, selectedStatus) : undefined,
+      ))
+      .orderBy(desc(orders.createdAt))
+      .limit(selectedStatus ? 20 : 5)
+      .catch((e: unknown) => { console.error('[DB ERROR]', e); throw e }),
+    db
+      .select({ count: count() })
+      .from(orders)
+      .where(and(eq(orders.userId, user.id), isNull(orders.deletedAt))),
+    db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(and(
+        eq(orders.userId, user.id),
+        isNull(orders.deletedAt),
+        eq(orders.isPendingPayment, true),
+      )),
+    db
+      .select()
+      .from(locations)
+      .where(eq(locations.userId, user.id))
+      .orderBy(desc(locations.createdAt)),
+    db
+      .select({ locationId: orders.locationId, orderCount: count(orders.id) })
+      .from(orders)
+      .where(and(eq(orders.userId, user.id), isNull(orders.deletedAt)))
+      .groupBy(orders.locationId),
+    seedDemoDataIfNeeded(user.id),
+  ])
+
+  const locationCountMap: Record<string, number> = {}
+  for (const r of locationOrderCounts) {
+    if (r.locationId) locationCountMap[r.locationId] = r.orderCount
+  }
 
   const orderIds = recentOrders.map((o) => o.id)
+  const pendingOrderIds = pendingOrders.map((o) => o.id)
 
   let itemTotalsMap: Record<string, number> = {}
   let paymentTotalsMap: Record<string, number> = {}
+  let totalUnpaid = 0
 
-  if (orderIds.length > 0) {
-    const itemTotals = await db
-      .select({ orderId: orderItems.orderId, total: sum(orderItems.finalPriceTwd) })
-      .from(orderItems)
-      .where(inArray(orderItems.orderId, orderIds))
-      .groupBy(orderItems.orderId)
+  const allIds = Array.from(new Set([...orderIds, ...pendingOrderIds]))
 
-    const paymentTotals = await db
-      .select({ orderId: payments.orderId, total: sum(payments.amountTwd) })
-      .from(payments)
-      .where(inArray(payments.orderId, orderIds))
-      .groupBy(payments.orderId)
+  if (allIds.length > 0) {
+    const [itemTotals, paymentTotals] = await Promise.all([
+      db
+        .select({ orderId: orderItems.orderId, total: sum(orderItems.finalPriceTwd) })
+        .from(orderItems)
+        .where(inArray(orderItems.orderId, allIds))
+        .groupBy(orderItems.orderId),
+      db
+        .select({ orderId: payments.orderId, total: sum(payments.amountTwd) })
+        .from(payments)
+        .where(inArray(payments.orderId, allIds))
+        .groupBy(payments.orderId),
+    ])
 
     itemTotals.forEach((r) => { itemTotalsMap[r.orderId] = parseFloat(r.total ?? '0') })
     paymentTotals.forEach((r) => { paymentTotalsMap[r.orderId] = parseFloat(r.total ?? '0') })
   }
 
-  const totalUnpaid = Object.keys(itemTotalsMap).reduce((sum, id) => {
+  // 待收款只計算手動標記的訂單
+  for (const { id } of pendingOrders) {
     const total = itemTotalsMap[id] ?? 0
     const paid = paymentTotalsMap[id] ?? 0
-    return sum + Math.max(0, total - paid)
-  }, 0)
-
-  const [totalOrderCount] = await db
-    .select({ count: count() })
-    .from(orders)
-    .where(and(eq(orders.userId, user.id), isNull(orders.deletedAt)))
+    totalUnpaid += Math.max(0, total - paid)
+  }
 
   return (
     <div className="space-y-6">
@@ -115,6 +141,35 @@ export default async function DashboardPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* 地點卡片 */}
+      {locationList.length > 0 && (
+        <div>
+          <h2 className="font-semibold mb-2">地點</h2>
+          <div className="grid grid-cols-2 gap-3">
+            {locationList.map((loc) => (
+              <Link key={loc.id} href={`/locations/${loc.id}`}>
+                <div className="border rounded-lg p-3 bg-card hover:bg-muted/50 transition-colors h-full">
+                  <div className="flex items-start gap-2">
+                    <MapPin className="h-4 w-4 text-primary mt-0.5 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm truncate">{loc.name}</p>
+                      {loc.date && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {new Date(loc.date).toLocaleDateString('zh-TW')}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {locationCountMap[loc.id] ?? 0} 筆訂單
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-2">

@@ -14,6 +14,9 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
+import { CustomerSearch, type CustomerOption } from '@/components/orders/customer-search'
+import { LocationPicker, type LocationOption } from '@/components/orders/location-picker'
+import { NumberInput } from '@/components/ui/number-input'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 import { Plus, Trash2, Loader2, RefreshCw } from 'lucide-react'
@@ -38,7 +41,7 @@ function defaultItem(feeRate = 10): OrderItemInput {
   }
 }
 
-export function NewOrderForm({ defaultFeeRate = 10 }: { defaultFeeRate?: number }) {
+export function NewOrderForm({ defaultFeeRate = 10, customers = [], locationOptions = [] }: { defaultFeeRate?: number; customers?: CustomerOption[]; locationOptions?: LocationOption[] }) {
   const router = useRouter()
   const [step, setStep] = useState<Step>(1)
   const [loading, setLoading] = useState(false)
@@ -49,6 +52,7 @@ export function NewOrderForm({ defaultFeeRate = 10 }: { defaultFeeRate?: number 
     defaultValues: {
       customerName: '',
       customerId: undefined,
+      locationId: undefined,
       note: '',
       items: [defaultItem(defaultFeeRate)],
     },
@@ -144,15 +148,31 @@ export function NewOrderForm({ defaultFeeRate = 10 }: { defaultFeeRate?: number 
           <CardContent className="pt-6 space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="customerName">客戶姓名 <span className="text-destructive">*</span></Label>
-              <Input
-                id="customerName"
-                placeholder="輸入客戶姓名或暱稱"
-                className="h-11"
-                {...form.register('customerName')}
+              <CustomerSearch
+                customers={customers}
+                value={form.watch('customerName')}
+                onChange={(name, customerId) => {
+                  form.setValue('customerName', name)
+                  form.setValue('customerId', customerId)
+                }}
+                error={form.formState.errors.customerName?.message}
               />
               {form.formState.errors.customerName && (
                 <p className="text-sm text-destructive">{form.formState.errors.customerName.message}</p>
               )}
+              {customers.length > 0 && (
+                <p className="text-xs text-muted-foreground">可輸入名字搜尋現有客戶，或直接輸入新客戶姓名</p>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>地點</Label>
+              <LocationPicker
+                locations={locationOptions}
+                value={form.watch('locationId')}
+                onChange={(id) => form.setValue('locationId', id)}
+              />
+              <p className="text-xs text-muted-foreground">選擇出發地點，方便匯總購物清單</p>
             </div>
 
             <div className="space-y-1.5">
@@ -258,12 +278,12 @@ export function NewOrderForm({ defaultFeeRate = 10 }: { defaultFeeRate?: number 
 
                   <div className="space-y-1.5">
                     <Label>原價（{CURRENCY_SYMBOLS[item?.currency ?? 'JPY']}）<span className="text-destructive">*</span></Label>
-                    <Input
-                      type="number"
+                    <NumberInput
                       inputMode="decimal"
                       placeholder="0"
                       className="h-11"
-                      {...form.register(`items.${index}.originalPrice`, { valueAsNumber: true })}
+                      value={Number(item?.originalPrice ?? 0)}
+                      onValueChange={(v) => form.setValue(`items.${index}.originalPrice`, v)}
                     />
                     {form.formState.errors.items?.[index]?.originalPrice && (
                       <p className="text-sm text-destructive">{form.formState.errors.items[index]?.originalPrice?.message}</p>
@@ -288,13 +308,13 @@ export function NewOrderForm({ defaultFeeRate = 10 }: { defaultFeeRate?: number 
                         更新匯率
                       </Button>
                     </div>
-                    <Input
-                      type="number"
+                    <NumberInput
                       inputMode="decimal"
                       step="0.0001"
                       placeholder="0.0000"
                       className="h-11"
-                      {...form.register(`items.${index}.exchangeRate`, { valueAsNumber: true })}
+                      value={Number(item?.exchangeRate ?? 0)}
+                      onValueChange={(v) => form.setValue(`items.${index}.exchangeRate`, v)}
                     />
                     <p className="text-xs text-muted-foreground">已自動帶入今日匯率，點擊「更新匯率」可重新抓取</p>
                     {form.formState.errors.items?.[index]?.exchangeRate && (
@@ -318,12 +338,13 @@ export function NewOrderForm({ defaultFeeRate = 10 }: { defaultFeeRate?: number 
 
                     <div className="space-y-1.5">
                       <Label>運費分攤（NT$）</Label>
-                      <Input
-                        type="number"
+                      <NumberInput
                         inputMode="decimal"
                         min={0}
+                        placeholder="0"
                         className="h-11"
-                        {...form.register(`items.${index}.shippingShare`, { valueAsNumber: true })}
+                        value={Number(item?.shippingShare ?? 0)}
+                        onValueChange={(v) => form.setValue(`items.${index}.shippingShare`, v)}
                       />
                     </div>
                   </div>

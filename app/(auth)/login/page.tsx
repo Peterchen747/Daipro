@@ -39,10 +39,13 @@ export default function LoginPage() {
     })
 
     if (error) {
-      toast.error(error.message === 'Invalid login credentials'
-        ? 'Email 或密碼錯誤'
-        : error.message
-      )
+      const msg =
+        error.message === 'Invalid login credentials'
+          ? 'Email 或密碼錯誤，請確認後再試'
+          : error.message === 'Email not confirmed'
+          ? '請先到信箱確認註冊連結，再登入'
+          : error.message
+      toast.error(msg)
       setLoading(false)
       return
     }

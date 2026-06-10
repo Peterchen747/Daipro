@@ -43,13 +43,18 @@ export default function RegisterPage() {
     })
 
     if (error) {
-      toast.error(error.message)
+      const msg =
+        error.message === 'User already registered'
+          ? '此 Email 已註冊，請直接登入'
+          : error.message
+      toast.error(msg)
       setLoading(false)
       return
     }
 
-    toast.success('註冊成功！請登入')
+    toast.success('註冊成功！請確認 Email 後登入')
     router.push('/login')
+    router.refresh()
   }
 
   return (

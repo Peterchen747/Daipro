@@ -36,25 +36,34 @@ export default function RegisterPage() {
 
   async function onSubmit(data: RegisterInput) {
     setLoading(true)
-    const supabase = createClient()
-    const { error } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-    })
+    try {
+      const supabase = createClient()
+      const { data: signUpData, error } = await supabase.auth.signUp({
+        email: data.email,
+        password: data.password,
+      })
 
-    if (error) {
-      const msg =
-        error.message === 'User already registered'
-          ? '此 Email 已註冊，請直接登入'
-          : error.message
+      if (error) {
+        toast.error(error.message)
+        return
+      }
+
+      // 新版 Supabase 對已存在的 email 不回傳 error，而是回傳 identities: []
+      if (signUpData.user && signUpData.user.identities?.length === 0) {
+        toast.error('此 Email 已註冊，請直接登入')
+        return
+      }
+
+      toast.success('註冊成功！請到信箱確認後再登入')
+      router.push('/login')
+      router.refresh()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '註冊失敗，請稍後再試'
       toast.error(msg)
+      console.error('[register error]', err)
+    } finally {
       setLoading(false)
-      return
     }
-
-    toast.success('註冊成功！請確認 Email 後登入')
-    router.push('/login')
-    router.refresh()
   }
 
   return (

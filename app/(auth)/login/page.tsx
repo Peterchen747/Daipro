@@ -32,27 +32,34 @@ export default function LoginPage() {
 
   async function onSubmit(data: LoginInput) {
     setLoading(true)
-    const supabase = createClient()
-    const { error } = await supabase.auth.signInWithPassword({
-      email: data.email,
-      password: data.password,
-    })
+    try {
+      const supabase = createClient()
+      const { error } = await supabase.auth.signInWithPassword({
+        email: data.email,
+        password: data.password,
+      })
 
-    if (error) {
-      const msg =
-        error.message === 'Invalid login credentials'
-          ? 'Email 或密碼錯誤，請確認後再試'
-          : error.message === 'Email not confirmed'
-          ? '請先到信箱確認註冊連結，再登入'
-          : error.message
+      if (error) {
+        const msg =
+          error.message === 'Invalid login credentials'
+            ? 'Email 或密碼錯誤，請確認後再試'
+            : error.message === 'Email not confirmed'
+            ? '請先到信箱確認註冊連結，再登入'
+            : error.message
+        toast.error(msg)
+        return
+      }
+
+      toast.success('登入成功')
+      router.push('/dashboard')
+      router.refresh()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '登入失敗，請稍後再試'
       toast.error(msg)
+      console.error('[login error]', err)
+    } finally {
       setLoading(false)
-      return
     }
-
-    toast.success('登入成功')
-    router.push('/dashboard')
-    router.refresh()
   }
 
   return (
